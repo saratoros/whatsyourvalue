@@ -26,9 +26,10 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # Project site: base /repo/ — user site repo (…github.io): base /
       - name: Build
         env:
-          VITE_BASE: /${{ github.event.repository.name }}/
+          VITE_BASE: ${{ endsWith(github.event.repository.name, '.github.io') && '/' || format('/{0}/', github.event.repository.name) }}
         run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
