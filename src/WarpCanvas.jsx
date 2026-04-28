@@ -81,7 +81,7 @@ float boundaryRadius(vec2 dir) {
 }
 
 void main() {
-  vec3 bg = vec3(1.0);
+  vec3 bg = vec3(0.93);
   if (u_hasTex < 0.5) {
     gl_FragColor = vec4(0.93, 0.93, 0.93, 1.0);
     return;
@@ -176,7 +176,7 @@ function sourceSize(img) {
 }
 
 function drawImageContain(ctx, S, img) {
-  ctx.fillStyle = '#ffffff'
+  ctx.fillStyle = '#ededed'
   ctx.fillRect(0, 0, S, S)
   const { w: iw, h: ih } = sourceSize(img)
   if (!iw || !ih) return
@@ -308,7 +308,7 @@ export function WarpCanvas({ scores, image, size }) {
       }
     }
 
-    gl.clearColor(1, 1, 1, 1)
+    gl.clearColor(0.93, 0.93, 0.93, 1)
     gl.clear(gl.COLOR_BUFFER_BIT)
 
     gl.useProgram(prog)

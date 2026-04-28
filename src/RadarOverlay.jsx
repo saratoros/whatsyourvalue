@@ -1,7 +1,8 @@
 import { axisAngle } from './radarMath.js'
 
 /** Chart + grid lines (matches form accent) */
-const PINK = '#e14b8a'
+const ACCENT = '#2200fe'
+const ACCENT_LABEL = '#2a1fb8'
 
 const LABELS = [
   'Creditworthy',
@@ -47,7 +48,7 @@ export function RadarOverlay({ size, scores }) {
         y1={cy}
         x2={p.x}
         y2={p.y}
-        stroke={PINK}
+        stroke={ACCENT}
         strokeWidth={0.5}
         vectorEffect="non-scaling-stroke"
       />
@@ -64,7 +65,7 @@ export function RadarOverlay({ size, scores }) {
         key={`ring-${i}`}
         points={pts}
         fill="none"
-        stroke={PINK}
+        stroke={ACCENT}
         strokeWidth={0.5}
         strokeDasharray="4 4"
         vectorEffect="non-scaling-stroke"
@@ -81,7 +82,7 @@ export function RadarOverlay({ size, scores }) {
         y={p.y}
         textAnchor="middle"
         dominantBaseline="middle"
-        fill="#c84889"
+        fill={ACCENT_LABEL}
         fontSize={12}
         style={{ fontFamily: 'system-ui, Inter, sans-serif' }}
       >
@@ -104,7 +105,7 @@ export function RadarOverlay({ size, scores }) {
       <polygon
         points={polyPts}
         fill="none"
-        stroke={PINK}
+        stroke={ACCENT}
         strokeWidth={0.5}
         vectorEffect="non-scaling-stroke"
         opacity={0.85}

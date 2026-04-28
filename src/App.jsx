@@ -27,6 +27,19 @@ function fmt01(v) {
   return n.toFixed(2)
 }
 
+/** CSS var for WebKit range track fill (Firefox uses ::-moz-range-progress). */
+function rangeFillStyle(value, min, max) {
+  const v = Number(value)
+  const lo = Number(min)
+  const hi = Number(max)
+  if (!Number.isFinite(v) || !(hi > lo)) {
+    return { '--range-pct': '0%' }
+  }
+  const t = (v - lo) / (hi - lo)
+  const pct = Math.min(1, Math.max(0, t)) * 100
+  return { '--range-pct': `${pct}%` }
+}
+
 export default function App() {
   const [credit, setCredit] = useState(0)
   const [igIdx, setIgIdx] = useState(0)
@@ -203,6 +216,7 @@ export default function App() {
               min={0}
               max={850}
               value={credit}
+              style={rangeFillStyle(credit, 0, 850)}
               onChange={(e) => setCredit(Number(e.target.value))}
             />
             <span className="num">{credit}</span>
@@ -221,6 +235,7 @@ export default function App() {
               max={FOLLOWER_MAX_INDEX}
               step={1}
               value={igIdx}
+              style={rangeFillStyle(igIdx, 0, FOLLOWER_MAX_INDEX)}
               onChange={(e) => setIgIdx(Number(e.target.value))}
             />
             <span className="num">{ig.toLocaleString()}</span>
@@ -234,6 +249,7 @@ export default function App() {
               max={FOLLOWER_MAX_INDEX}
               step={1}
               value={liIdx}
+              style={rangeFillStyle(liIdx, 0, FOLLOWER_MAX_INDEX)}
               onChange={(e) => setLiIdx(Number(e.target.value))}
             />
             <span className="num">{li.toLocaleString()}</span>
@@ -247,6 +263,7 @@ export default function App() {
               max={FOLLOWER_MAX_INDEX}
               step={1}
               value={xfIdx}
+              style={rangeFillStyle(xfIdx, 0, FOLLOWER_MAX_INDEX)}
               onChange={(e) => setXfIdx(Number(e.target.value))}
             />
             <span className="num">{xFollow.toLocaleString()}</span>
@@ -260,6 +277,7 @@ export default function App() {
               max={80}
               step={1}
               value={closeFriends}
+              style={rangeFillStyle(closeFriends, 0, 80)}
               onChange={(e) => setCloseFriends(Number(e.target.value))}
             />
             <span className="num">{closeFriends}</span>
@@ -290,6 +308,7 @@ export default function App() {
               max={5}
               step={0.01}
               value={uber}
+              style={rangeFillStyle(uber, 0, 5)}
               onChange={(e) => setUber(Number(e.target.value))}
             />
             <span className="num">{uber.toFixed(2)}</span>
@@ -303,6 +322,7 @@ export default function App() {
               max={5}
               step={0.01}
               value={airbnb}
+              style={rangeFillStyle(airbnb, 0, 5)}
               onChange={(e) => setAirbnb(Number(e.target.value))}
             />
             <span className="num">{airbnb.toFixed(2)}</span>
@@ -320,6 +340,7 @@ export default function App() {
               min={0}
               max={40}
               value={years}
+              style={rangeFillStyle(years, 0, 40)}
               onChange={(e) => setYears(Number(e.target.value))}
             />
             <span className="num">{years}</span>
@@ -367,6 +388,7 @@ export default function App() {
               max={15000}
               step={100}
               value={steps}
+              style={rangeFillStyle(steps, 0, 15000)}
               onChange={(e) => setSteps(Number(e.target.value))}
             />
             <span className="num">{steps}</span>
@@ -380,6 +402,7 @@ export default function App() {
               max={100}
               step={1}
               value={age}
+              style={rangeFillStyle(age, 1, 100)}
               onChange={(e) => setAge(Number(e.target.value))}
             />
             <span className="num">{age}</span>
@@ -393,6 +416,7 @@ export default function App() {
               max={200}
               step={1}
               value={weightKg}
+              style={rangeFillStyle(weightKg, 30, 200)}
               onChange={(e) => setWeightKg(Number(e.target.value))}
             />
             <span className="num">{weightKg}</span>
@@ -408,6 +432,12 @@ export default function App() {
           <div className="norm">normalized {fmt01(nHealth)}</div>
         </section>
         </div>
+        <p className="panel--left__scroll-hint">
+          <span>scroll</span>
+          <span className="panel--left__scroll-hint__arrow" aria-hidden="true">
+            ↓
+          </span>
+        </p>
       </aside>
 
       <main className="panel panel--right">
