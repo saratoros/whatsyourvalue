@@ -1,11 +1,15 @@
 # Build Vite and deploy dist/ to GitHub Pages.
-# After first push: Repo → Settings → Pages → Build and deployment → Source: GitHub Actions.
+#
+# Pages MUST use this workflow’s artifact (not “Deploy from a branch”).
+# If Source is “Deploy from a branch” → /main, GitHub serves root index.html
+# (with /src/main.jsx) and the site stays blank. Fix: Settings → Pages → Source → GitHub Actions.
 
 name: Deploy to GitHub Pages
 
 on:
   push:
     branches: [main, master]
+  workflow_dispatch:
 
 permissions:
   contents: read
