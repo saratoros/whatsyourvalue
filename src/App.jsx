@@ -22,7 +22,9 @@ const SALARY_OPTIONS = [
 ]
 
 function fmt01(v) {
-  return v.toFixed(2)
+  const n = Number(v)
+  if (!Number.isFinite(n)) return '0.00'
+  return n.toFixed(2)
 }
 
 export default function App() {

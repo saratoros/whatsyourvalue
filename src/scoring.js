@@ -105,8 +105,12 @@ export function normalizeHealthy(steps, hasTracker, ageYears, weightKg) {
 }
 
 export function compositeScore(n1, n2, n3, n4, n5) {
-  const avg = (n1 + n2 + n3 + n4 + n5) / 5
-  return Math.round(avg * 1000)
+  const parts = [n1, n2, n3, n4, n5].map((x) =>
+    Number.isFinite(Number(x)) ? Number(x) : 0,
+  )
+  const avg = parts.reduce((a, b) => a + b, 0) / 5
+  const raw = Math.round(avg * 1000)
+  return Number.isFinite(raw) ? raw : 0
 }
 
 function clamp01(v) {
