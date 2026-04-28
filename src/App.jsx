@@ -414,8 +414,9 @@ export default function App() {
             <span className="score-block__label">Value score</span>
             <span className="score-block__num">{social}</span>
             <p className="caption caption--score">
-              Every number above already exists somewhere. This is what it looks like
-              together.
+              We are now defined by metrics. Everything is quantifiable, our past, our
+              present, and even our future. In this constant translation into 0 and 1s,
+              we are slowly distorted in real time.
             </p>
           </div>
         </header>
