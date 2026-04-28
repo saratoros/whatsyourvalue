@@ -163,6 +163,25 @@
   position: relative;
 }
 
+.dropzone--busy {
+  cursor: wait;
+}
+
+.dropzone__busy {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: #444444;
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
 .dropzone:hover {
   border-color: #bbbbbb;
   background: #fafafa;

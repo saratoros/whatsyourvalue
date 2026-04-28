@@ -11,6 +11,7 @@ import {
   normalizeVisible,
 } from './scoring.js'
 import './App.css'
+import { extractFaceCrop } from './faceCrop.js'
 import { FOLLOWER_MAX_INDEX, FOLLOWER_TIERS } from './followerTiers.js'
 
 const SALARY_OPTIONS = [
@@ -63,6 +64,7 @@ export default function App() {
 
   const [faceUrl, setFaceUrl] = useState(null)
   const [faceImage, setFaceImage] = useState(null)
+  const [faceBusy, setFaceBusy] = useState(false)
   const loadGenRef = useRef(0)
 
   const stageRef = useRef(null)
@@ -137,7 +139,25 @@ export default function App() {
             bmp.close()
             return
           }
-          setFaceImage(bmp)
+          setFaceBusy(true)
+          try {
+            const cropped = await extractFaceCrop(bmp)
+            if (gen !== loadGenRef.current) {
+              bmp.close()
+              cropped?.close()
+              return
+            }
+            if (cropped) {
+              bmp.close()
+              setFaceImage(cropped)
+            } else {
+              setFaceImage(bmp)
+            }
+          } catch {
+            if (gen === loadGenRef.current) setFaceImage(bmp)
+          } finally {
+            if (gen === loadGenRef.current) setFaceBusy(false)
+          }
           return
         }
       } catch {
@@ -145,8 +165,22 @@ export default function App() {
       }
       const im = new Image()
       im.onload = () => {
-        if (gen !== loadGenRef.current) return
-        setFaceImage(im)
+        void (async () => {
+          if (gen !== loadGenRef.current) return
+          setFaceBusy(true)
+          try {
+            const cropped = await extractFaceCrop(im)
+            if (gen !== loadGenRef.current) {
+              cropped?.close()
+              return
+            }
+            setFaceImage(cropped ?? im)
+          } catch {
+            if (gen === loadGenRef.current) setFaceImage(im)
+          } finally {
+            if (gen === loadGenRef.current) setFaceBusy(false)
+          }
+        })()
       }
       im.onerror = () => {
         if (gen !== loadGenRef.current) return
@@ -178,7 +212,7 @@ export default function App() {
 
         <div className="upload-block">
           <label
-            className="dropzone"
+            className={`dropzone${faceBusy ? ' dropzone--busy' : ''}`}
             onDragOver={(e) => e.preventDefault()}
             onDrop={onDrop}
           >
@@ -195,8 +229,15 @@ export default function App() {
             ) : (
               <img src={faceUrl} alt="" className="thumb" />
             )}
+            {faceBusy ? (
+              <span className="dropzone__busy" role="status">
+                Finding face…
+              </span>
+            ) : null}
           </label>
           <p className="upload-hint">
+            <strong>Auto-crop:</strong> we try to detect the main face and zoom the crop
+            for you (runs in your browser). If no face is found, the full photo is used.{' '}
             <strong>Best results:</strong> use a <strong>square</strong> image at least{' '}
             <strong>800×800 px</strong> (larger is fine). Crop so your{' '}
             <strong>face fills most of the frame</strong>, centered on the nose or between
