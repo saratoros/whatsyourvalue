@@ -230,9 +230,21 @@ export default function App() {
               <img src={faceUrl} alt="" className="thumb" />
             )}
             {faceBusy ? (
-              <span className="dropzone__busy" role="status">
-                Finding face…
-              </span>
+              <div
+                className="dropzone__busy"
+                role="status"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <div className="dropzone__busy-inner">
+                  <div className="dropzone__spinner" aria-hidden="true" />
+                  <span className="dropzone__busy-title">Cropping your image</span>
+                  <p className="dropzone__busy-sub">
+                    Detecting your face and framing the crop… This can take a few
+                    seconds the first time.
+                  </p>
+                </div>
+              </div>
             ) : null}
           </label>
           <p className="upload-hint">
