@@ -1,10 +1,7 @@
-# Build Vite and deploy dist/ to GitHub Pages.
+# Deploy Vite dist/ to GitHub Pages (single job: fewer token/artifact edge cases).
 #
-# Pages MUST use this workflow’s artifact (not “Deploy from a branch”).
-# If Source is “Deploy from a branch” → /main, GitHub serves root index.html
-# (with /src/main.jsx) and the site stays blank. Fix: Settings → Pages → Source → GitHub Actions.
-#
-# If workflows still fail: Settings → Pages → enable once, then re-run this workflow.
+# Settings → Pages → Build: GitHub Actions (not “Deploy from a branch”).
+# First time: open Pages settings once, pick “GitHub Actions”, save, then re-run workflow.
 
 name: Deploy to GitHub Pages
 
@@ -17,47 +14,48 @@ permissions:
   contents: read
   pages: write
   id-token: write
-  actions: read
 
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      # Project site: base /repo/ — user site repo (…github.io): base /
-      - name: Build
-        env:
-          VITE_BASE: ${{ endsWith(github.event.repository.name, '.github.io') && '/' || format('/{0}/', github.event.repository.name) }}
-        run: |
-          echo "VITE_BASE=$VITE_BASE"
-          npm run build
-          du -sh dist || true
-      - uses: actions/upload-pages-artifact@v4
-        with:
-          path: dist
-
   deploy:
-    needs: build
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-      actions: read
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - id: deployment
-        uses: actions/deploy-pages@v5
+      - uses: actions/checkout@v4
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        env:
+          VITE_BASE: ${{ endsWith(github.event.repository.name, '.github.io') && '/' || format('/{0}/', github.event.repository.name) }}
+        run: |
+          set -eux
+          echo "VITE_BASE=$VITE_BASE"
+          npm run build
+          test -f dist/index.html
+          du -sh dist
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
