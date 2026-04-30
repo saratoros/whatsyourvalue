@@ -12,10 +12,9 @@ import {
 } from './scoring.js'
 import './App.css'
 import { extractFaceCrop } from './faceCrop.js'
-import {
-  extractVideoFrameBitmap,
-  imageBitmapToJpegObjectURL,
-} from './decodeVideoFrame.js'
+import { imageBitmapToJpegObjectURL } from './decodeVideoFrame.js'
+import { ManualSquareCropModal } from './ManualSquareCropModal.jsx'
+import { removeBackgroundFromBitmap } from './removeImageBackground.js'
 import { FOLLOWER_MAX_INDEX, FOLLOWER_TIERS } from './followerTiers.js'
 
 const SALARY_OPTIONS = [
@@ -30,6 +29,29 @@ function fmt01(v) {
   const n = Number(v)
   if (!Number.isFinite(n)) return '0.00'
   return n.toFixed(2)
+}
+
+/** Object URL for manual crop editor (JPEG). */
+async function rasterToJpegObjectUrl(source) {
+  if (source instanceof ImageBitmap) {
+    return imageBitmapToJpegObjectURL(source)
+  }
+  if (source instanceof HTMLImageElement) {
+    const w = source.naturalWidth || source.width
+    const h = source.naturalHeight || source.height
+    if (!w || !h) return null
+    const c = document.createElement('canvas')
+    c.width = w
+    c.height = h
+    const ctx = c.getContext('2d')
+    if (!ctx) return null
+    ctx.drawImage(source, 0, 0)
+    const blob = await new Promise((resolve) =>
+      c.toBlob(resolve, 'image/jpeg', 0.92),
+    )
+    return blob ? URL.createObjectURL(blob) : null
+  }
+  return null
 }
 
 /** CSS var for WebKit range track fill (Firefox uses ::-moz-range-progress). */
@@ -47,9 +69,11 @@ function rangeFillStyle(value, min, max) {
 
 export default function App() {
   const [credit, setCredit] = useState(0)
+  const [ownsHome, setOwnsHome] = useState(false)
   const [igIdx, setIgIdx] = useState(0)
   const [liIdx, setLiIdx] = useState(0)
   const [xfIdx, setXfIdx] = useState(0)
+  const [stravaIdx, setStravaIdx] = useState(0)
   const [uber, setUber] = useState(0)
   const [airbnb, setAirbnb] = useState(0)
   const [years, setYears] = useState(0)
@@ -61,25 +85,43 @@ export default function App() {
   const [tracker, setTracker] = useState(false)
   const [age, setAge] = useState(1)
   const [weightKg, setWeightKg] = useState(30)
+  const [stravaKmWeek, setStravaKmWeek] = useState(0)
+  const [vo2Known, setVo2Known] = useState(false)
+  const [vo2max, setVo2max] = useState(42)
+  const [takesVitamins, setTakesVitamins] = useState(false)
 
   const ig = FOLLOWER_TIERS[igIdx]
   const li = FOLLOWER_TIERS[liIdx]
   const xFollow = FOLLOWER_TIERS[xfIdx]
+  const stravaFollowers = FOLLOWER_TIERS[stravaIdx]
 
   const [faceUrl, setFaceUrl] = useState(null)
   const [faceImage, setFaceImage] = useState(null)
-  /** null | 'preparing' | 'cropping' — covers decode + face crop so the dropzone never feels idle */
+  /** null | 'preparing' | 'background' | 'cropping' */
   const [uploadPhase, setUploadPhase] = useState(null)
   const [uploadError, setUploadError] = useState(null)
+  const [manualCropOpen, setManualCropOpen] = useState(false)
+  const [manualCropUrl, setManualCropUrl] = useState(null)
   const loadGenRef = useRef(0)
 
   const stageRef = useRef(null)
   const [stageSize, setStageSize] = useState(800)
 
-  const nCredit = useMemo(() => normalizeCreditworthy(credit), [credit])
+  const nCredit = useMemo(
+    () => normalizeCreditworthy(credit, ownsHome),
+    [credit, ownsHome],
+  )
   const nVis = useMemo(
-    () => normalizeVisible(ig, li, xFollow, closeFriends, marital),
-    [ig, li, xFollow, closeFriends, marital],
+    () =>
+      normalizeVisible(
+        ig,
+        li,
+        xFollow,
+        stravaFollowers,
+        closeFriends,
+        marital,
+      ),
+    [ig, li, xFollow, stravaFollowers, closeFriends, marital],
   )
   const nComp = useMemo(() => normalizeCompliant(uber, airbnb), [uber, airbnb])
   const nProd = useMemo(
@@ -87,8 +129,27 @@ export default function App() {
     [years, salary, sector],
   )
   const nHealth = useMemo(
-    () => normalizeHealthy(steps, tracker, age, weightKg),
-    [steps, tracker, age, weightKg],
+    () =>
+      normalizeHealthy(
+        steps,
+        tracker,
+        age,
+        weightKg,
+        stravaKmWeek,
+        vo2Known,
+        vo2max,
+        takesVitamins,
+      ),
+    [
+      steps,
+      tracker,
+      age,
+      weightKg,
+      stravaKmWeek,
+      vo2Known,
+      vo2max,
+      takesVitamins,
+    ],
   )
 
   const scores = useMemo(
@@ -122,11 +183,49 @@ export default function App() {
     }
   }, [onResize])
 
+  const revokeManualCropUrl = useCallback(() => {
+    setManualCropUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+  }, [])
+
+  const onManualCropApply = useCallback(
+    (bmp) => {
+      setFaceImage((prev) => {
+        if (prev && typeof prev.close === 'function') prev.close()
+        return bmp
+      })
+      revokeManualCropUrl()
+      setManualCropOpen(false)
+    },
+    [revokeManualCropUrl],
+  )
+
+  const onManualCropClose = useCallback(() => {
+    revokeManualCropUrl()
+    setManualCropOpen(false)
+  }, [revokeManualCropUrl])
+
+  const openManualCrop = useCallback(async () => {
+    if (!faceImage || uploadPhase) return
+    revokeManualCropUrl()
+    try {
+      const url = await rasterToJpegObjectUrl(faceImage)
+      if (!url) return
+      setManualCropUrl(url)
+      setManualCropOpen(true)
+    } catch {
+      // ignore
+    }
+  }, [faceImage, uploadPhase, revokeManualCropUrl])
+
   const loadFile = useCallback((file) => {
     setUploadError(null)
+    revokeManualCropUrl()
+    setManualCropOpen(false)
     const isImage = !!file?.type?.startsWith('image/')
-    const isVideo = !!file?.type?.startsWith('video/')
-    if (!file || (!isImage && !isVideo)) {
+    if (!file || !isImage) {
       // #region agent log
       fetch('http://127.0.0.1:7288/ingest/f3a06ad6-c19e-4494-9187-05bd4710398e', {
         method: 'POST',
@@ -144,10 +243,8 @@ export default function App() {
         }),
       }).catch(() => {})
       // #endregion
-      if (file && !isImage && !isVideo) {
-        setUploadError(
-          'Use an image or video file (e.g. JPG, PNG, MP4, WebM).',
-        )
+      if (file && !isImage) {
+        setUploadError('Use an image file (JPG, PNG, WebP, GIF, etc.).')
       }
       return
     }
@@ -173,7 +270,7 @@ export default function App() {
       if (prev && typeof prev.close === 'function') prev.close()
       return null
     })
-    const url = isImage ? URL.createObjectURL(file) : null
+    const url = URL.createObjectURL(file)
     setFaceUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev)
       return url
@@ -181,6 +278,48 @@ export default function App() {
     setUploadPhase('preparing')
 
     void (async () => {
+      const runFacePipeline = async (workBmp) => {
+        if (gen !== loadGenRef.current) {
+          workBmp.close()
+          return
+        }
+        setUploadPhase('background')
+        const nobg = await removeBackgroundFromBitmap(workBmp)
+        if (gen !== loadGenRef.current) {
+          nobg?.close()
+          workBmp.close()
+          return
+        }
+        let work = workBmp
+        if (nobg) {
+          workBmp.close()
+          work = nobg
+        }
+        if (gen !== loadGenRef.current) {
+          work.close()
+          return
+        }
+        setUploadPhase('cropping')
+        try {
+          const cropped = await extractFaceCrop(work)
+          if (gen !== loadGenRef.current) {
+            work.close()
+            cropped?.close()
+            return
+          }
+          if (cropped) {
+            work.close()
+            setFaceImage(cropped)
+          } else {
+            setFaceImage(work)
+          }
+        } catch {
+          if (gen === loadGenRef.current) setFaceImage(work)
+        } finally {
+          if (gen === loadGenRef.current) setUploadPhase(null)
+        }
+      }
+
       try {
       // #region agent log
       const tAsync0 = Date.now()
@@ -201,39 +340,7 @@ export default function App() {
       }).catch(() => {})
       // #endregion
       let bmp = null
-      if (isVideo) {
-        try {
-          bmp = await extractVideoFrameBitmap(file)
-        } catch {
-          bmp = null
-        }
-        if (!bmp || gen !== loadGenRef.current) {
-          bmp?.close()
-          if (gen === loadGenRef.current) {
-            setUploadPhase(null)
-            setFaceUrl((prev) => {
-              if (prev) URL.revokeObjectURL(prev)
-              return null
-            })
-            setUploadError(
-              'Could not read that video. Try MP4 or WebM, or export a frame as an image.',
-            )
-          }
-          return
-        }
-        const thumbUrl = await imageBitmapToJpegObjectURL(bmp)
-        if (gen !== loadGenRef.current) {
-          bmp.close()
-          if (thumbUrl) URL.revokeObjectURL(thumbUrl)
-          return
-        }
-        if (thumbUrl) {
-          setFaceUrl((prev) => {
-            if (prev) URL.revokeObjectURL(prev)
-            return thumbUrl
-          })
-        }
-      } else if (typeof createImageBitmap === 'function') {
+      if (typeof createImageBitmap === 'function') {
         try {
           bmp = await createImageBitmap(file, {
             imageOrientation: 'from-image',
@@ -277,7 +384,6 @@ export default function App() {
           bmp.close()
           return
         }
-        if (gen === loadGenRef.current) setUploadPhase('cropping')
         // #region agent log
         fetch('http://127.0.0.1:7288/ingest/f3a06ad6-c19e-4494-9187-05bd4710398e', {
           method: 'POST',
@@ -288,56 +394,16 @@ export default function App() {
           body: JSON.stringify({
             sessionId: 'a0240a',
             hypothesisId: 'H1',
-            location: 'App.jsx:loadFile:phase_cropping',
-            message: 'set_phase_cropping_before_extract',
+            location: 'App.jsx:loadFile:phase_pipeline',
+            message: 'pipeline_start',
             data: { gen, msSinceAsync: Date.now() - tAsync0 },
             timestamp: Date.now(),
           }),
         }).catch(() => {})
         // #endregion
-        try {
-          const cropped = await extractFaceCrop(bmp)
-          // #region agent log
-          fetch('http://127.0.0.1:7288/ingest/f3a06ad6-c19e-4494-9187-05bd4710398e', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Debug-Session-Id': 'a0240a',
-            },
-            body: JSON.stringify({
-              sessionId: 'a0240a',
-              hypothesisId: 'H3',
-              location: 'App.jsx:loadFile:after_crop',
-              message: 'crop_done',
-              data: {
-                gen,
-                usedCrop: !!cropped,
-                msSinceAsync: Date.now() - tAsync0,
-              },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {})
-          // #endregion
-          if (gen !== loadGenRef.current) {
-            bmp.close()
-            cropped?.close()
-            return
-          }
-          if (cropped) {
-            bmp.close()
-            setFaceImage(cropped)
-          } else {
-            setFaceImage(bmp)
-          }
-        } catch {
-          if (gen === loadGenRef.current) setFaceImage(bmp)
-        } finally {
-          if (gen === loadGenRef.current) setUploadPhase(null)
-        }
+        await runFacePipeline(bmp)
         return
       }
-
-      if (isVideo) return
 
       const im = new Image()
       im.onload = () => {
@@ -365,6 +431,16 @@ export default function App() {
         // #endregion
         void (async () => {
           if (gen !== loadGenRef.current) return
+          let bmp2 = null
+          try {
+            bmp2 = await createImageBitmap(im)
+          } catch {
+            bmp2 = null
+          }
+          if (bmp2) {
+            await runFacePipeline(bmp2)
+            return
+          }
           if (gen === loadGenRef.current) setUploadPhase('cropping')
           try {
             const cropped = await extractFaceCrop(im)
@@ -390,7 +466,7 @@ export default function App() {
         if (gen === loadGenRef.current) setUploadPhase(null)
       }
     })()
-  }, [])
+  }, [revokeManualCropUrl])
 
   const onDrop = (e) => {
     e.preventDefault()
@@ -421,13 +497,13 @@ export default function App() {
           >
             <input
               type="file"
-              accept="image/*,video/*"
+              accept="image/*"
               className="file"
               onChange={onPick}
             />
             {!faceUrl ? (
               <span className="dropzone__hint">
-                Drop a photo or short video here, or click to upload
+                Drop a photo here, or click to upload
               </span>
             ) : (
               <img src={faceUrl} alt="" className="thumb" />
@@ -449,6 +525,14 @@ export default function App() {
                         rotation can take a moment.
                       </p>
                     </>
+                  ) : uploadPhase === 'background' ? (
+                    <>
+                      <span className="dropzone__busy-title">Removing background</span>
+                      <p className="dropzone__busy-sub">
+                        Running on-device segmentation… The first run downloads a model
+                        (several MB); please wait.
+                      </p>
+                    </>
                   ) : (
                     <>
                       <span className="dropzone__busy-title">Cropping your image</span>
@@ -467,23 +551,28 @@ export default function App() {
               {uploadError}
             </p>
           ) : null}
-          <p className="upload-hint">
-            <strong>Video:</strong> we grab one frame from the start of the clip (same face
-            crop as photos). Very long files or uncommon codecs may fail—try MP4/WebM or a
-            screenshot instead.{' '}
-            <strong>Auto-crop:</strong> we detect a face when we can.{' '}
-            <strong>If there’s a face on an opaque background,</strong> we crop to the face
-            and drop most of the surroundings.{' '}
-            <strong>If there’s no face,</strong> or the picture is already tight on the face,
-            or it looks like a cutout (transparent areas outside the face),{' '}
-            <strong>we keep the whole image.</strong>{' '}
-            <strong>Best results:</strong> use a <strong>square</strong> image at least{' '}
-            <strong>800×800 px</strong> (larger is fine). Crop so your{' '}
-            <strong>face fills most of the frame</strong>, centered on the nose or between
-            the eyes. Remove busy backgrounds when you can—<strong>a clear headshot on a
-            plain or transparent background</strong> warps cleanly and lines up with the
-            chart; wide scenic shots or off-center faces will look shifted.
-          </p>
+          {faceImage && !uploadPhase ? (
+            <p className="upload-actions">
+              <button
+                type="button"
+                className="upload-actions__btn"
+                onClick={() => void openManualCrop()}
+              >
+                Adjust square crop
+              </button>
+            </p>
+          ) : null}
+          <ul className="upload-hint upload-hint--list">
+            <li>
+              <strong>Background and crop</strong> — runs in your browser (first visit
+              downloads models). Face + busy scene → we zoom the face; no face / already
+              tight / cutout → whole image. Use <strong>Adjust square crop</strong> anytime.
+            </li>
+            <li>
+              <strong>Best warp</strong> — square, ~800×800+ px, face large and centered;
+              plain or transparent background beats wide scenic shots.
+            </li>
+          </ul>
         </div>
 
         <section className="axis-block">
@@ -501,6 +590,14 @@ export default function App() {
             />
             <span className="num">{credit}</span>
           </div>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={ownsHome}
+              onChange={(e) => setOwnsHome(e.target.checked)}
+            />
+            Owns a home
+          </label>
           <div className="norm">normalized {fmt01(nCredit)}</div>
         </section>
 
@@ -547,6 +644,20 @@ export default function App() {
               onChange={(e) => setXfIdx(Number(e.target.value))}
             />
             <span className="num">{xFollow.toLocaleString()}</span>
+          </div>
+          <div className="row">
+            <label htmlFor="strava">Strava followers</label>
+            <input
+              id="strava"
+              type="range"
+              min={0}
+              max={FOLLOWER_MAX_INDEX}
+              step={1}
+              value={stravaIdx}
+              style={rangeFillStyle(stravaIdx, 0, FOLLOWER_MAX_INDEX)}
+              onChange={(e) => setStravaIdx(Number(e.target.value))}
+            />
+            <span className="num">{stravaFollowers.toLocaleString()}</span>
           </div>
           <div className="row">
             <label htmlFor="friends">Close friends (approx.)</label>
@@ -674,6 +785,20 @@ export default function App() {
             <span className="num">{steps}</span>
           </div>
           <div className="row">
+            <label htmlFor="stravaKm">Strava distance this week (km)</label>
+            <input
+              id="stravaKm"
+              type="range"
+              min={0}
+              max={300}
+              step={1}
+              value={stravaKmWeek}
+              style={rangeFillStyle(stravaKmWeek, 0, 300)}
+              onChange={(e) => setStravaKmWeek(Number(e.target.value))}
+            />
+            <span className="num">{stravaKmWeek}</span>
+          </div>
+          <div className="row">
             <label htmlFor="age">Age (years)</label>
             <input
               id="age"
@@ -701,6 +826,38 @@ export default function App() {
             />
             <span className="num">{weightKg}</span>
           </div>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={vo2Known}
+              onChange={(e) => setVo2Known(e.target.checked)}
+            />
+            VO2 max known (ml/kg/min)
+          </label>
+          {vo2Known ? (
+            <div className="row">
+              <label htmlFor="vo2">VO2 max</label>
+              <input
+                id="vo2"
+                type="range"
+                min={22}
+                max={75}
+                step={0.5}
+                value={vo2max}
+                style={rangeFillStyle(vo2max, 22, 75)}
+                onChange={(e) => setVo2max(Number(e.target.value))}
+              />
+              <span className="num">{vo2max.toFixed(1)}</span>
+            </div>
+          ) : null}
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={takesVitamins}
+              onChange={(e) => setTakesVitamins(e.target.checked)}
+            />
+            Takes vitamins / supplements regularly
+          </label>
           <label className="check">
             <input
               type="checkbox"
@@ -742,6 +899,13 @@ export default function App() {
           </div>
         </div>
       </main>
+      <ManualSquareCropModal
+        key={manualCropUrl || 'closed'}
+        open={manualCropOpen}
+        imageUrl={manualCropUrl}
+        onClose={onManualCropClose}
+        onApply={onManualCropApply}
+      />
     </div>
   )
 }

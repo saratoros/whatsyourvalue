@@ -10,28 +10,32 @@ const SALARY_MAP = {
 
 /**
  * @param {number} creditScore 0–850
+ * @param {boolean} ownsHome self-reported homeowner
  */
-export function normalizeCreditworthy(creditScore) {
-  const t = creditScore / 850
-  return clamp01(t)
+export function normalizeCreditworthy(creditScore, ownsHome) {
+  const creditNorm = clamp01(creditScore / 850)
+  const homeNorm = ownsHome ? 1 : 0.52
+  return clamp01((creditNorm + homeNorm) / 2)
 }
 
 /** @typedef {'single' | 'married' | 'divorced'} MaritalStatus */
 
 /**
- * Online reach + close friends + relationship status → single Visible axis score.
+ * Online reach (incl. Strava) + close friends + relationship status → Visible axis score.
  */
 export function normalizeVisible(
   instagram,
   linkedin,
   x,
+  stravaFollowers,
   closeFriends,
   marital,
 ) {
   const networkReach =
-    (Math.log(instagram + 1) / Math.log(1_000_000 + 1)) * 0.5 +
-    (Math.log(linkedin + 1) / Math.log(30_000 + 1)) * 0.3 +
-    (Math.log(x + 1) / Math.log(1_000_000 + 1)) * 0.2
+    (Math.log(instagram + 1) / Math.log(1_000_000 + 1)) * 0.4 +
+    (Math.log(linkedin + 1) / Math.log(30_000 + 1)) * 0.25 +
+    (Math.log(x + 1) / Math.log(1_000_000 + 1)) * 0.15 +
+    (Math.log(stravaFollowers + 1) / Math.log(50_000 + 1)) * 0.2
 
   const friendsNorm = clamp01(closeFriends / 80)
 
@@ -89,19 +93,45 @@ export function normalizeProductive(yearsEmployed, bracket, sectorId) {
   return (y + s + sectorNorm) / 3
 }
 
+/** Weekly Strava distance (km) at or above this counts as full contribution to Healthy. */
+const STRAVA_KM_WEEK_FULL = 120
+
+/** VO2 max (ml/kg/min): below ≈poor, at/above ≈excellent for scoring spread. */
+const VO2_MIN = 22
+const VO2_FULL = 58
+
 /**
  * @param {number} steps 0–15000
  * @param {boolean} hasTracker
  * @param {number} ageYears 1–100
  * @param {number} weightKg 30–200
+ * @param {number} stravaKmThisWeek 0+ km this calendar week
+ * @param {boolean} vo2Known user supplied a lab / device VO2 max
+ * @param {number} vo2max ml/kg/min when vo2Known
+ * @param {boolean} takesVitamins daily supplements (self-reported)
  */
-export function normalizeHealthy(steps, hasTracker, ageYears, weightKg) {
+export function normalizeHealthy(
+  steps,
+  hasTracker,
+  ageYears,
+  weightKg,
+  stravaKmThisWeek,
+  vo2Known,
+  vo2max,
+  takesVitamins,
+) {
   const trackerBonus = hasTracker ? 0.1 : 0
+  const vitaminBonus = takesVitamins ? 0.04 : 0
   const stepsNorm = Math.min(steps / 12_000, 1.0)
   const ageNorm = clamp01((ageYears - 1) / (100 - 1))
   const weightNorm = clamp01((weightKg - 30) / (200 - 30))
-  const base = ((stepsNorm + ageNorm + weightNorm) / 3) * 0.9
-  return clamp01(base + trackerBonus)
+  const stravaNorm = clamp01(stravaKmThisWeek / STRAVA_KM_WEEK_FULL)
+  const vo2Norm = vo2Known
+    ? clamp01((vo2max - VO2_MIN) / (VO2_FULL - VO2_MIN))
+    : 0.55
+  const base =
+    ((stepsNorm + ageNorm + weightNorm + stravaNorm + vo2Norm) / 5) * 0.86
+  return clamp01(base + trackerBonus + vitaminBonus)
 }
 
 export function compositeScore(n1, n2, n3, n4, n5) {

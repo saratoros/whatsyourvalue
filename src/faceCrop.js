@@ -76,7 +76,8 @@ function transparentOutsideFaceDominates(
     }
   }
 
-  if (outside < 48) return true
+  if (outside === 0) return false
+  if (outside < 48) return transparentOutside / outside > 0.5
   return transparentOutside / outside > 0.38
 }
 

@@ -154,9 +154,133 @@
   color: #888888;
 }
 
+.upload-hint--list {
+  list-style: disc;
+  padding-left: 1.15rem;
+  margin: 10px 0 0;
+}
+
+.upload-hint--list li {
+  margin: 0.35em 0;
+}
+
+.upload-hint--list li::marker {
+  color: #bbbbbb;
+}
+
 .upload-hint strong {
   font-weight: 600;
   color: #666666;
+}
+
+.upload-actions {
+  margin: 10px 0 0;
+}
+
+.upload-actions__btn {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  border-radius: 2px;
+  border: 1px solid var(--accent);
+  background: #ffffff;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.upload-actions__btn:hover {
+  background: var(--accent-track);
+}
+
+.crop-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.crop-modal {
+  width: min(420px, 100%);
+  max-height: min(90vh, 560px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  box-sizing: border-box;
+  background: #ffffff;
+  border-radius: 4px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+}
+
+.crop-modal__title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #111111;
+}
+
+.crop-modal__hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #777777;
+}
+
+.crop-modal__viewport {
+  position: relative;
+  width: 100%;
+  height: 280px;
+  background: #1a1a1a;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.crop-modal__zoom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: #555555;
+}
+
+.crop-modal__zoom input[type='range'] {
+  flex: 1;
+  min-width: 0;
+}
+
+.crop-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.crop-modal__btn {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 2px;
+  border: 1px solid #cccccc;
+  background: #ffffff;
+  color: #333333;
+  cursor: pointer;
+}
+
+.crop-modal__btn--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
 }
 
 .dropzone {
