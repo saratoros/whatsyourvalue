@@ -23,7 +23,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      NODE_OPTIONS: --max-old-space-size=6144
+      NODE_OPTIONS: '--max-old-space-size=6144'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
