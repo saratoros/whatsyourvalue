@@ -1,7 +1,8 @@
-# Deploy Vite dist/ to GitHub Pages (single job: fewer token/artifact edge cases).
+# Deploy Vite dist/ to GitHub Pages (single job).
 #
 # Settings → Pages → Build: GitHub Actions (not “Deploy from a branch”).
-# First time: open Pages settings once, pick “GitHub Actions”, save, then re-run workflow.
+#
+# Node 24 for JavaScript-based actions (see GitHub changelog 2025-09-19); app build still uses setup-node.
 
 name: Deploy to GitHub Pages
 
@@ -23,26 +24,42 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      NODE_OPTIONS: '--max-old-space-size=6144'
+      # https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      # #region agent log (H2/H5: runner + action-runtime flags)
+      - name: Diagnostics
+        run: |
+          {
+            echo "## CI diagnostics"
+            echo "- RUNNER_OS: $RUNNER_OS"
+            echo "- FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: $FORCE_JAVASCRIPT_ACTIONS_TO_NODE24"
+            echo "- GITHUB_REPOSITORY: $GITHUB_REPOSITORY"
+            echo "- default node (runner): $(command -v node >/dev/null && node -v || echo none)"
+          } >> "$GITHUB_STEP_SUMMARY"
+      # #endregion
+
+      - uses: actions/checkout@v5
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: npm
 
       - name: Install
+        env:
+          NODE_OPTIONS: '--max-old-space-size=6144'
         run: npm ci
 
       - name: Build
         env:
+          NODE_OPTIONS: '--max-old-space-size=6144'
           VITE_BASE: ${{ endsWith(github.event.repository.name, '.github.io') && '/' || format('/{0}/', github.event.repository.name) }}
         run: |
           set -eux
