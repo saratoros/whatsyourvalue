@@ -12,6 +12,10 @@ import {
 } from './scoring.js'
 import './App.css'
 import { extractFaceCrop } from './faceCrop.js'
+import {
+  extractVideoFrameBitmap,
+  imageBitmapToJpegObjectURL,
+} from './decodeVideoFrame.js'
 import { FOLLOWER_MAX_INDEX, FOLLOWER_TIERS } from './followerTiers.js'
 
 const SALARY_OPTIONS = [
@@ -64,7 +68,9 @@ export default function App() {
 
   const [faceUrl, setFaceUrl] = useState(null)
   const [faceImage, setFaceImage] = useState(null)
-  const [faceBusy, setFaceBusy] = useState(false)
+  /** null | 'preparing' | 'cropping' — covers decode + face crop so the dropzone never feels idle */
+  const [uploadPhase, setUploadPhase] = useState(null)
+  const [uploadError, setUploadError] = useState(null)
   const loadGenRef = useRef(0)
 
   const stageRef = useRef(null)
@@ -117,57 +123,249 @@ export default function App() {
   }, [onResize])
 
   const loadFile = useCallback((file) => {
-    if (!file || !file.type.startsWith('image/')) return
+    setUploadError(null)
+    const isImage = !!file?.type?.startsWith('image/')
+    const isVideo = !!file?.type?.startsWith('video/')
+    if (!file || (!isImage && !isVideo)) {
+      // #region agent log
+      fetch('http://127.0.0.1:7288/ingest/f3a06ad6-c19e-4494-9187-05bd4710398e', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Debug-Session-Id': 'a0240a',
+        },
+        body: JSON.stringify({
+          sessionId: 'a0240a',
+          hypothesisId: 'H5',
+          location: 'App.jsx:loadFile',
+          message: 'early_return_not_image',
+          data: { hasFile: !!file, type: file?.type ?? null },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {})
+      // #endregion
+      if (file && !isImage && !isVideo) {
+        setUploadError(
+          'Use an image or video file (e.g. JPG, PNG, MP4, WebM).',
+        )
+      }
+      return
+    }
     const gen = ++loadGenRef.current
+    // #region agent log
+    fetch('http://127.0.0.1:7288/ingest/f3a06ad6-c19e-4494-9187-05bd4710398e', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Debug-Session-Id': 'a0240a',
+      },
+      body: JSON.stringify({
+        sessionId: 'a0240a',
+        hypothesisId: 'H5',
+        location: 'App.jsx:loadFile:accepted',
+        message: 'file_accepted',
+        data: { gen, type: file.type, size: file.size },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {})
+    // #endregion
     setFaceImage((prev) => {
       if (prev && typeof prev.close === 'function') prev.close()
       return null
     })
-    const url = URL.createObjectURL(file)
+    const url = isImage ? URL.createObjectURL(file) : null
     setFaceUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev)
       return url
     })
+    setUploadPhase('preparing')
 
     void (async () => {
       try {
-        if (typeof createImageBitmap === 'function') {
-          const bmp = await createImageBitmap(file, {
-            imageOrientation: 'from-image',
-          })
-          if (gen !== loadGenRef.current) {
-            bmp.close()
-            return
-          }
-          setFaceBusy(true)
-          try {
-            const cropped = await extractFaceCrop(bmp)
-            if (gen !== loadGenRef.current) {
-              bmp.close()
-              cropped?.close()
-              return
-            }
-            if (cropped) {
-              bmp.close()
-              setFaceImage(cropped)
-            } else {
-              setFaceImage(bmp)
-            }
-          } catch {
-            if (gen === loadGenRef.current) setFaceImage(bmp)
-          } finally {
-            if (gen === loadGenRef.current) setFaceBusy(false)
+      // #region agent log
+      const tAsync0 = Date.now()
+      fetch('http://127.0.0.1:7288/ingest/f3a06ad6-c19e-4494-9187-05bd4710398e', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Debug-Session-Id': 'a0240a',
+        },
+        body: JSON.stringify({
+          sessionId: 'a0240a',
+          hypothesisId: 'H1',
+          location: 'App.jsx:loadFile:async_start',
+          message: 'async_decode_start',
+          data: { gen, beforeFaceBusy: false, t0: tAsync0 },
+          timestamp: tAsync0,
+        }),
+      }).catch(() => {})
+      // #endregion
+      let bmp = null
+      if (isVideo) {
+        try {
+          bmp = await extractVideoFrameBitmap(file)
+        } catch {
+          bmp = null
+        }
+        if (!bmp || gen !== loadGenRef.current) {
+          bmp?.close()
+          if (gen === loadGenRef.current) {
+            setUploadPhase(null)
+            setFaceUrl((prev) => {
+              if (prev) URL.revokeObjectURL(prev)
+              return null
+            })
+            setUploadError(
+              'Could not read that video. Try MP4 or WebM, or export a frame as an image.',
+            )
           }
           return
         }
-      } catch {
-        /* fall through to Image */
+        const thumbUrl = await imageBitmapToJpegObjectURL(bmp)
+        if (gen !== loadGenRef.current) {
+          bmp.close()
+          if (thumbUrl) URL.revokeObjectURL(thumbUrl)
+          return
+        }
+        if (thumbUrl) {
+          setFaceUrl((prev) => {
+            if (prev) URL.revokeObjectURL(prev)
+            return thumbUrl
+          })
+        }
+      } else if (typeof createImageBitmap === 'function') {
+        try {
+          bmp = await createImageBitmap(file, {
+            imageOrientation: 'from-image',
+          })
+        } catch {
+          try {
+            bmp = await createImageBitmap(file)
+          } catch {
+            bmp = null
+          }
+        }
       }
+
+      // #region agent log
+      const tAfterBmp = Date.now()
+      fetch('http://127.0.0.1:7288/ingest/f3a06ad6-c19e-4494-9187-05bd4710398e', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Debug-Session-Id': 'a0240a',
+        },
+        body: JSON.stringify({
+          sessionId: 'a0240a',
+          hypothesisId: 'H2',
+          location: 'App.jsx:loadFile:after_decode',
+          message: 'decode_finished',
+          data: {
+            gen,
+            hasBmp: !!bmp,
+            w: bmp?.width ?? null,
+            h: bmp?.height ?? null,
+            msSinceAsync: tAfterBmp - tAsync0,
+          },
+          timestamp: tAfterBmp,
+        }),
+      }).catch(() => {})
+      // #endregion
+
+      if (bmp) {
+        if (gen !== loadGenRef.current) {
+          bmp.close()
+          return
+        }
+        if (gen === loadGenRef.current) setUploadPhase('cropping')
+        // #region agent log
+        fetch('http://127.0.0.1:7288/ingest/f3a06ad6-c19e-4494-9187-05bd4710398e', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Debug-Session-Id': 'a0240a',
+          },
+          body: JSON.stringify({
+            sessionId: 'a0240a',
+            hypothesisId: 'H1',
+            location: 'App.jsx:loadFile:phase_cropping',
+            message: 'set_phase_cropping_before_extract',
+            data: { gen, msSinceAsync: Date.now() - tAsync0 },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {})
+        // #endregion
+        try {
+          const cropped = await extractFaceCrop(bmp)
+          // #region agent log
+          fetch('http://127.0.0.1:7288/ingest/f3a06ad6-c19e-4494-9187-05bd4710398e', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Debug-Session-Id': 'a0240a',
+            },
+            body: JSON.stringify({
+              sessionId: 'a0240a',
+              hypothesisId: 'H3',
+              location: 'App.jsx:loadFile:after_crop',
+              message: 'crop_done',
+              data: {
+                gen,
+                usedCrop: !!cropped,
+                msSinceAsync: Date.now() - tAsync0,
+              },
+              timestamp: Date.now(),
+            }),
+          }).catch(() => {})
+          // #endregion
+          if (gen !== loadGenRef.current) {
+            bmp.close()
+            cropped?.close()
+            return
+          }
+          if (cropped) {
+            bmp.close()
+            setFaceImage(cropped)
+          } else {
+            setFaceImage(bmp)
+          }
+        } catch {
+          if (gen === loadGenRef.current) setFaceImage(bmp)
+        } finally {
+          if (gen === loadGenRef.current) setUploadPhase(null)
+        }
+        return
+      }
+
+      if (isVideo) return
+
       const im = new Image()
       im.onload = () => {
+        // #region agent log
+        fetch('http://127.0.0.1:7288/ingest/f3a06ad6-c19e-4494-9187-05bd4710398e', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Debug-Session-Id': 'a0240a',
+          },
+          body: JSON.stringify({
+            sessionId: 'a0240a',
+            hypothesisId: 'H4',
+            location: 'App.jsx:loadFile:image_onload',
+            message: 'img_fallback_onload',
+            data: {
+              gen,
+              nw: im.naturalWidth,
+              nh: im.naturalHeight,
+              msSinceAsync: Date.now() - tAsync0,
+            },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {})
+        // #endregion
         void (async () => {
           if (gen !== loadGenRef.current) return
-          setFaceBusy(true)
+          if (gen === loadGenRef.current) setUploadPhase('cropping')
           try {
             const cropped = await extractFaceCrop(im)
             if (gen !== loadGenRef.current) {
@@ -178,15 +376,19 @@ export default function App() {
           } catch {
             if (gen === loadGenRef.current) setFaceImage(im)
           } finally {
-            if (gen === loadGenRef.current) setFaceBusy(false)
+            if (gen === loadGenRef.current) setUploadPhase(null)
           }
         })()
       }
       im.onerror = () => {
         if (gen !== loadGenRef.current) return
         setFaceImage(null)
+        setUploadPhase(null)
       }
       im.src = url
+      } catch {
+        if (gen === loadGenRef.current) setUploadPhase(null)
+      }
     })()
   }, [])
 
@@ -199,6 +401,7 @@ export default function App() {
   const onPick = (e) => {
     const f = e.target.files?.[0]
     loadFile(f)
+    e.target.value = ''
   }
 
   return (
@@ -212,24 +415,24 @@ export default function App() {
 
         <div className="upload-block">
           <label
-            className={`dropzone${faceBusy ? ' dropzone--busy' : ''}`}
+            className={`dropzone${uploadPhase ? ' dropzone--busy' : ''}`}
             onDragOver={(e) => e.preventDefault()}
             onDrop={onDrop}
           >
             <input
               type="file"
-              accept="image/*"
+              accept="image/*,video/*"
               className="file"
               onChange={onPick}
             />
             {!faceUrl ? (
               <span className="dropzone__hint">
-                Drop a face photo here, or click to upload
+                Drop a photo or short video here, or click to upload
               </span>
             ) : (
               <img src={faceUrl} alt="" className="thumb" />
             )}
-            {faceBusy ? (
+            {uploadPhase ? (
               <div
                 className="dropzone__busy"
                 role="status"
@@ -238,18 +441,42 @@ export default function App() {
               >
                 <div className="dropzone__busy-inner">
                   <div className="dropzone__spinner" aria-hidden="true" />
-                  <span className="dropzone__busy-title">Cropping your image</span>
-                  <p className="dropzone__busy-sub">
-                    Detecting your face and framing the crop… This can take a few
-                    seconds the first time.
-                  </p>
+                  {uploadPhase === 'preparing' ? (
+                    <>
+                      <span className="dropzone__busy-title">Preparing your image</span>
+                      <p className="dropzone__busy-sub">
+                        Reading and decoding your photo… Larger files or HEIC/JPEG with
+                        rotation can take a moment.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <span className="dropzone__busy-title">Cropping your image</span>
+                      <p className="dropzone__busy-sub">
+                        Detecting your face and framing the crop… The first run may take a
+                        few seconds while the detector loads.
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             ) : null}
           </label>
+          {uploadError ? (
+            <p className="upload-error" role="alert">
+              {uploadError}
+            </p>
+          ) : null}
           <p className="upload-hint">
-            <strong>Auto-crop:</strong> we try to detect the main face and zoom the crop
-            for you (runs in your browser). If no face is found, the full photo is used.{' '}
+            <strong>Video:</strong> we grab one frame from the start of the clip (same face
+            crop as photos). Very long files or uncommon codecs may fail—try MP4/WebM or a
+            screenshot instead.{' '}
+            <strong>Auto-crop:</strong> we detect a face when we can.{' '}
+            <strong>If there’s a face on an opaque background,</strong> we crop to the face
+            and drop most of the surroundings.{' '}
+            <strong>If there’s no face,</strong> or the picture is already tight on the face,
+            or it looks like a cutout (transparent areas outside the face),{' '}
+            <strong>we keep the whole image.</strong>{' '}
             <strong>Best results:</strong> use a <strong>square</strong> image at least{' '}
             <strong>800×800 px</strong> (larger is fine). Crop so your{' '}
             <strong>face fills most of the frame</strong>, centered on the nose or between

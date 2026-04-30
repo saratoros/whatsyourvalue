@@ -140,6 +140,13 @@
   margin-bottom: 22px;
 }
 
+.upload-error {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #b42318;
+}
+
 .upload-hint {
   margin: 10px 0 0;
   font-size: 11px;
